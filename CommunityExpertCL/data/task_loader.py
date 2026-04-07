@@ -191,13 +191,9 @@ class TaskLoader:
         valid_edges = edge_in_subgraph & edge_has_target
         subgraph_edge_index = edge_index[:, valid_edges]
 
-        edge_index_with_sl = self.data.edge_index
-        src_sl, dst_sl = edge_index_with_sl[0], edge_index_with_sl[1]
-        edge_in_sub_sl = all_nodes_mask[src_sl] & all_nodes_mask[dst_sl]
-        edge_has_target_sl = target_mask[src_sl] | target_mask[dst_sl]
-        is_selfloop = src_sl == dst_sl
-        valid_sl = edge_in_sub_sl & (edge_has_target_sl | is_selfloop)
-        subgraph_edge_index_sl = edge_index_with_sl[:, valid_sl]
+        loop_nodes = torch.tensor(all_nodes_list, dtype=edge_index.dtype)
+        self_loops = torch.stack([loop_nodes, loop_nodes], dim=0)
+        subgraph_edge_index_sl = torch.cat([subgraph_edge_index, self_loops], dim=1)
 
         return {
             'target_nodes': sorted(target_idx_set),

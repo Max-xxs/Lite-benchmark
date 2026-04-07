@@ -53,6 +53,20 @@ DEFAULT_LITEEXPERT_SVD = {
 }
 
 
+def task_seq_suffix(meta):
+    if meta['strategy'] == 'exp1_fixed':
+        return (
+            f"exp1fixed_g{meta['group_size']}"
+            f"_s{meta['effective_sessions']}"
+        )
+    if meta['strategy'] == 'legacy':
+        return f"legacy_s{meta['effective_sessions']}"
+    return (
+        f"{meta['strategy']}_s{meta['effective_sessions']}"
+        f"_e{meta.get('max_experts', 'na')}"
+    )
+
+
 def parse_json_mapping(raw_value):
     if raw_value is None:
         return {}
@@ -84,10 +98,7 @@ def build_task_sequence_file(dataset, task_seq_dir, session_strategy,
         'num_classes': len(class_ids),
         'max_experts': max_experts,
     }
-    suffix = (
-        f"{meta['strategy']}_s{meta['effective_sessions']}"
-        f"_e{meta['max_experts']}"
-    )
+    suffix = task_seq_suffix(meta)
     path = task_seq_dir / f'{dataset}_{suffix}.json'
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open('w', encoding='utf-8') as f:
@@ -136,8 +147,8 @@ def main():
     parser.add_argument('--gpu', type=int, default=0)
     parser.add_argument('--ntrials', type=int, default=5)
     parser.add_argument('--epochs', type=int, default=200)
-    parser.add_argument('--session_strategy', type=str, default='balanced',
-                        choices=['legacy', 'balanced'])
+    parser.add_argument('--session_strategy', type=str, default='exp1_fixed',
+                        choices=['legacy', 'balanced', 'exp1_fixed'])
     parser.add_argument('--num_sessions', type=int, default=None)
     parser.add_argument('--session_multiplier', type=float, default=2.0)
     parser.add_argument('--max_experts', type=int, default=8)
@@ -215,11 +226,9 @@ def main():
                 '--data_protocol', args.liteexpert_data_protocol,
                 '--output_dir', results_root,
                 '--model_name', 'LiteExpertCL',
+                '--task_seq_file', task_seq_files[dataset]['path'],
                 '--session_strategy', args.session_strategy,
-                '--session_multiplier', str(args.session_multiplier),
             ]
-            if args.num_sessions is not None:
-                cmd.extend(['--num_sessions', str(args.num_sessions)])
             run_command(cmd, PROJECT_ROOT, dry_run=args.dry_run)
 
     if not args.skip_external:

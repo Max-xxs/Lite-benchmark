@@ -2,7 +2,9 @@
 Experiment helpers for session construction and dataset settings.
 """
 
+import json
 from copy import deepcopy
+from pathlib import Path
 
 
 def _contiguous_group_splits(num_classes, group_size=2):
@@ -82,6 +84,15 @@ KNOWN_CLASS_COUNTS = {
     'reddit': 41,
 }
 
+EXP1_FIXED_GROUP_SIZES = {
+    'cora-full': 4,
+    'reddit': 4,
+    'ogbn-arxiv': 4,
+    'ogbn-products': 4,
+    'coauthor-cs': 2,
+    'amazon-computers': 2,
+}
+
 
 def get_dataset_setting(dataset):
     """Return a deep copy so callers can mutate safely."""
@@ -132,6 +143,72 @@ def build_balanced_class_splits(class_ids, num_sessions):
     return [split for split in splits if split]
 
 
+def build_fixed_class_splits(dataset, class_ids):
+    """Build fixed contiguous sessions for the Exp1 benchmark."""
+    if dataset not in EXP1_FIXED_GROUP_SIZES:
+        raise ValueError(
+            f"Dataset '{dataset}' does not have an Exp1 fixed session rule"
+        )
+    group_size = EXP1_FIXED_GROUP_SIZES[dataset]
+    ordered = list(sorted(class_ids))
+    splits = [
+        ordered[start:start + group_size]
+        for start in range(0, len(ordered), group_size)
+    ]
+    return [split for split in splits if split], {
+        'strategy': 'exp1_fixed',
+        'group_size': group_size,
+        'requested_sessions': len(splits),
+        'effective_sessions': len(splits),
+    }
+
+
+def load_task_sequence_file(task_seq_file, class_ids=None):
+    """Load and validate an explicit task sequence JSON file."""
+    with Path(task_seq_file).open('r', encoding='utf-8') as f:
+        payload = json.load(f)
+
+    if isinstance(payload, dict):
+        class_splits = payload.get('class_splits')
+        meta = payload.get('meta', {})
+    else:
+        class_splits = payload
+        meta = {}
+
+    if not isinstance(class_splits, list) or not class_splits:
+        raise ValueError('task_seq_file must contain a non-empty list of class splits')
+
+    normalized = []
+    seen = set()
+    allowed = set(class_ids) if class_ids is not None else None
+    for task_id, task_cls in enumerate(class_splits):
+        if not isinstance(task_cls, list) or not task_cls:
+            raise ValueError(f'task_seq[{task_id}] must be a non-empty list')
+        current = [int(cls_id) for cls_id in task_cls]
+        for cls_id in current:
+            if allowed is not None and cls_id not in allowed:
+                raise ValueError(f'class id {cls_id} is not valid for this dataset')
+            if cls_id in seen:
+                raise ValueError(f'class id {cls_id} is duplicated in task_seq_file')
+            seen.add(cls_id)
+        normalized.append(current)
+
+    if allowed is not None:
+        missing = sorted(allowed - seen)
+        if missing:
+            raise ValueError(
+                f'task_seq_file does not cover all classes, missing: {missing}'
+            )
+
+    meta = {
+        **meta,
+        'strategy': meta.get('strategy', 'task_seq_file'),
+        'requested_sessions': meta.get('requested_sessions', len(normalized)),
+        'effective_sessions': meta.get('effective_sessions', len(normalized)),
+    }
+    return normalized, meta
+
+
 def resolve_class_splits(dataset, class_ids, strategy,
                          num_sessions=None,
                          session_multiplier=2.0,
@@ -143,8 +220,12 @@ def resolve_class_splits(dataset, class_ids, strategy,
       - legacy: use the repository's hard-coded splits unless num_sessions
         overrides them
       - balanced: build balanced contiguous splits
+      - exp1_fixed: use the agreed fixed group size per dataset
     """
     ordered_class_ids = list(sorted(class_ids))
+
+    if strategy == 'exp1_fixed':
+        return build_fixed_class_splits(dataset, ordered_class_ids)
 
     if strategy == 'legacy':
         dataset_setting = get_dataset_setting(dataset)

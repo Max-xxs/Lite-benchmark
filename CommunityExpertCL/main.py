@@ -22,6 +22,7 @@ from models import LiteExpertCL
 from utils import (
     DATASET_SETTINGS,
     get_dataset_setting,
+    load_task_sequence_file,
     resolve_class_splits,
     resolve_trial_seeds,
     seed_everything,
@@ -47,7 +48,7 @@ def main():
     parser.add_argument('--model_name', type=str, default='liteexpert',
                         help='Model identifier used in saved results')
     parser.add_argument('--session_strategy', type=str, default='legacy',
-                        choices=['legacy', 'balanced'],
+                        choices=['legacy', 'balanced', 'exp1_fixed'],
                         help='How to construct class sessions')
     parser.add_argument('--num_sessions', type=int, default=None,
                         help='Override the number of sessions')
@@ -55,6 +56,8 @@ def main():
                         help='When num_sessions is omitted, use max_experts * multiplier')
     parser.add_argument('--reorder_by_class_size', action='store_true',
                         help='Use the legacy class reordering by class size')
+    parser.add_argument('--task_seq_file', type=str, default=None,
+                        help='Optional JSON file with an explicit task sequence')
     args = parser.parse_args()
 
     # Load config
@@ -81,21 +84,28 @@ def main():
         reorder_by_class_size=args.reorder_by_class_size,
         data_protocol=args.data_protocol,
     )
-    class_splits, split_meta = resolve_class_splits(
-        dataset=args.dataset,
-        class_ids=sorted(graph_dataset.id_by_class.keys()),
-        strategy=args.session_strategy,
-        num_sessions=args.num_sessions,
-        session_multiplier=args.session_multiplier,
-        max_experts=config.get('max_experts', 8),
-    )
+    class_ids = sorted(graph_dataset.id_by_class.keys())
+    if args.task_seq_file:
+        class_splits, split_meta = load_task_sequence_file(
+            args.task_seq_file,
+            class_ids=class_ids,
+        )
+    else:
+        class_splits, split_meta = resolve_class_splits(
+            dataset=args.dataset,
+            class_ids=class_ids,
+            strategy=args.session_strategy,
+            num_sessions=args.num_sessions,
+            session_multiplier=args.session_multiplier,
+            max_experts=config.get('max_experts', 8),
+        )
     config['class_splits'] = class_splits
 
     print(f"Device: {device}")
     print(f"Dataset: {args.dataset}")
     print(f"Data protocol: {args.data_protocol}")
     print(f"Model: {args.model_name}")
-    print(f"Session strategy: {args.session_strategy}")
+    print(f"Session strategy: {split_meta['strategy']}")
     print(f"Requested sessions: {split_meta['requested_sessions']}")
     print(f"Effective sessions: {split_meta['effective_sessions']}")
     print(f"Class splits: {config['class_splits']}")
@@ -103,6 +113,8 @@ def main():
           f"v/S={config['split_v']}/{config['split_S']}")
     print(f"AMP: {'enabled' if args.amp else 'disabled'}")
     print(f"Class reorder by size: {'enabled' if args.reorder_by_class_size else 'disabled'}")
+    if args.task_seq_file:
+        print(f"Task sequence file: {args.task_seq_file}")
     if args.svd_dim > 0:
         print(f"SVD dim: {args.svd_dim}")
 
@@ -146,11 +158,12 @@ def main():
                 'split_v': config['split_v'],
                 'svd_dim': args.svd_dim,
                 'data_protocol': args.data_protocol,
-                'session_strategy': args.session_strategy,
+                'session_strategy': split_meta['strategy'],
                 'requested_sessions': split_meta['requested_sessions'],
                 'effective_sessions': split_meta['effective_sessions'],
                 'max_experts': config.get('max_experts', None),
                 'reorder_by_class_size': args.reorder_by_class_size,
+                'task_seq_file': args.task_seq_file,
             },
             'results': {
                 'acc_matrix': results['acc_matrix'],

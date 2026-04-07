@@ -3,6 +3,7 @@ I/O helpers for experiment records.
 """
 
 import json
+import math
 from pathlib import Path
 
 from .metrics import aggregate_trial_records
@@ -15,7 +16,25 @@ def _ensure_dir(path):
 def _write_json(path, payload):
     _ensure_dir(Path(path).parent)
     with open(path, 'w', encoding='utf-8') as f:
-        json.dump(payload, f, indent=2, ensure_ascii=False)
+        json.dump(_sanitize_json(payload), f, indent=2, ensure_ascii=False)
+
+
+def _sanitize_json(value):
+    """Convert NaN/Inf values into strict-JSON-safe nulls."""
+    if isinstance(value, dict):
+        return {
+            key: _sanitize_json(item)
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [_sanitize_json(item) for item in value]
+    if isinstance(value, tuple):
+        return [_sanitize_json(item) for item in value]
+    if isinstance(value, float):
+        if math.isnan(value) or math.isinf(value):
+            return None
+        return value
+    return value
 
 
 def save_trial_record(results_root, trial_record):

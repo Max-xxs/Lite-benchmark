@@ -27,12 +27,23 @@ CGLB_BASELINES = ['bare', 'ewc', 'mas', 'lwf', 'gem', 'twp', 'ergnn', 'joint']
 DELOME_BASELINES = ['DeLoMe']
 
 
-def write_task_seq_file(task_seq_dir, dataset, class_splits, meta):
-    task_seq_dir.mkdir(parents=True, exist_ok=True)
-    suffix = (
+def task_seq_suffix(meta):
+    if meta['strategy'] == 'exp1_fixed':
+        return (
+            f"exp1fixed_g{meta['group_size']}"
+            f"_s{meta['effective_sessions']}"
+        )
+    if meta['strategy'] == 'legacy':
+        return f"legacy_s{meta['effective_sessions']}"
+    return (
         f"{meta['strategy']}_s{meta['effective_sessions']}"
         f"_e{meta.get('max_experts', 'na')}"
     )
+
+
+def write_task_seq_file(task_seq_dir, dataset, class_splits, meta):
+    task_seq_dir.mkdir(parents=True, exist_ok=True)
+    suffix = task_seq_suffix(meta)
     output_path = task_seq_dir / f'{dataset}_{suffix}.json'
     payload = {
         'dataset': dataset,
@@ -78,8 +89,8 @@ def main():
     parser.add_argument('--delome_backbone', type=str, default='GCN')
     parser.add_argument('--task_seq_dir', type=str,
                         default='./results/exp1/task_sequences')
-    parser.add_argument('--session_strategy', type=str, default='balanced',
-                        choices=['legacy', 'balanced'])
+    parser.add_argument('--session_strategy', type=str, default='exp1_fixed',
+                        choices=['legacy', 'balanced', 'exp1_fixed'])
     parser.add_argument('--num_sessions', type=int, default=None)
     parser.add_argument('--session_multiplier', type=float, default=2.0)
     parser.add_argument('--max_experts', type=int, default=8)

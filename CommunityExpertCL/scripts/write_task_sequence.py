@@ -22,8 +22,8 @@ def main():
     parser.add_argument('--output', type=str, required=True)
     parser.add_argument('--num_classes', type=int, default=None,
                         help='Override the known class count for this dataset')
-    parser.add_argument('--session_strategy', type=str, default='balanced',
-                        choices=['legacy', 'balanced'])
+    parser.add_argument('--session_strategy', type=str, default='exp1_fixed',
+                        choices=['legacy', 'balanced', 'exp1_fixed'])
     parser.add_argument('--num_sessions', type=int, default=None)
     parser.add_argument('--session_multiplier', type=float, default=2.0)
     parser.add_argument('--max_experts', type=int, default=8)

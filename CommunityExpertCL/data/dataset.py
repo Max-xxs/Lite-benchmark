@@ -11,7 +11,7 @@ import numpy as np
 from sklearn.decomposition import TruncatedSVD
 
 from torch_geometric.data import Data
-from torch_geometric.utils import add_self_loops, to_undirected
+from torch_geometric.utils import to_undirected
 from torch.utils.data import Dataset
 
 try:
@@ -279,7 +279,7 @@ class GraphDataset(Dataset):
         if remove_isolated:
             edge_index, x, y = self._remove_isolated_nodes(edge_index, x, y)
 
-        self.original_edge_index = edge_index.clone()
+        self.original_edge_index = edge_index
 
         if self.svd_dim > 0 and x.size(1) > self.svd_dim:
             print(f"Applying Truncated SVD: {x.size(1)} -> {self.svd_dim} dims...")
@@ -288,8 +288,10 @@ class GraphDataset(Dataset):
             explained = svd.explained_variance_ratio_.sum() * 100
             print(f"  Explained variance: {explained:.1f}%")
 
-        edge_index_sl, _ = add_self_loops(edge_index)
-        new_data = Data(x=x, edge_index=edge_index_sl, y=y)
+        # Keep only the no-self-loop graph globally. TaskLoader will attach
+        # self-loops lazily per subgraph to avoid duplicating giant edge tensors
+        # for Reddit/Products-scale graphs.
+        new_data = Data(x=x, edge_index=edge_index, y=y)
 
         id_by_class = self._build_class_index(new_data)
         self._print_info(new_data, id_by_class)
